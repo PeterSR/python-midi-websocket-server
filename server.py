@@ -7,6 +7,16 @@ import websockets
 import rtmidi
 
 
+def create_message(msg_type, payload):
+    return {
+        "type": msg_type,
+        "content": payload,
+    }
+
+
+async def send_to_all(msg):
+    awaitables = [ws.send(json.dumps(msg)) for ws in clients]
+    return await asyncio.gather(*awaitables, return_exceptions=False)
 
 def midi_type(midi):
     if midi.isNoteOn():
@@ -27,8 +37,8 @@ async def produce(device, port):
         midi = device.getMessage()
 
         if midi and clients:
-            data = {
-                "port": port,
+            data = create_message("midi_data", {
+                "port_index": port,
                 "port_name": port_name,
                 "note_number": midi.getNoteNumber(),
                 "note_name": midi.getMidiNoteName(midi.getNoteNumber()),
@@ -36,11 +46,9 @@ async def produce(device, port):
                 "state": midi_type(midi),
                 "controller_number": midi.getControllerNumber(),
                 "controller_value": midi.getControllerValue(),
-            }
+            })
 
-            awaitables = [ws.send(json.dumps(data)) for ws in clients]
-
-            await asyncio.gather(*awaitables, return_exceptions=False)
+            await send_to_all(data)
 
         await asyncio.sleep(timeout_ms)
 
@@ -52,7 +60,8 @@ async def handle_producers(loop):
     prev_num_ports = 0
 
     while True:
-        num_ports = rtmidi.RtMidiIn().getPortCount()
+        m = rtmidi.RtMidiIn()
+        num_ports = m.getPortCount()
 
         if num_ports != prev_num_ports:
             print("Creating new producers!")
@@ -61,14 +70,29 @@ async def handle_producers(loop):
                 producer.cancel()
 
             producers = []
+            device_names = []
 
             for port in range(num_ports):
                 device = rtmidi.RtMidiIn()
                 producers.append(loop.create_task(produce(device, port)))
+                device_names.append(m.getPortName(port))
+
+            await send_to_all(create_message("device_list", {
+                "devices": device_names,
+            }))
 
         prev_num_ports = num_ports
         await asyncio.sleep(1)
 
+
+def get_device_list(m=None):
+    if m is None:
+        m = rtmidi.RtMidiIn()
+
+    return [
+        m.getPortName(i)
+        for i in range(m.getPortCount())
+    ]
 
 
 clients = set()
@@ -80,6 +104,10 @@ async def handler(websocket, path):
     # Register
     clients.add(websocket)
 
+    await websocket.send(json.dumps(create_message("device_list", {
+        "devices": get_device_list(),
+    })))
+
     try:
         async for msg in websocket:
             pass
@@ -88,9 +116,6 @@ async def handler(websocket, path):
         clients.remove(websocket)
 
 
-
-device = rtmidi.RtMidiIn()
-port = 1
 
 loop = asyncio.get_event_loop()
 
