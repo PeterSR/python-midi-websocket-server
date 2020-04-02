@@ -8,32 +8,6 @@ import rtmidi
 
 
 
-class Hub():
-    # https://gist.github.com/appeltel/fd3ddeeed6c330c7208502462639d2c9
-
-    def __init__(self):
-        self.subscriptions = set()
-
-    def publish(self, message):
-        for queue in self.subscriptions:
-            queue.put_nowait(message)
-
-
-class Subscription():
-
-    def __init__(self, hub):
-        self.hub = hub
-        self.queue = asyncio.Queue()
-
-    def __enter__(self):
-        hub.subscriptions.add(self.queue)
-        return self.queue
-
-    def __exit__(self, type, value, traceback):
-        hub.subscriptions.remove(self.queue)
-
-
-
 def midi_type(midi):
     if midi.isNoteOn():
         return "on"
@@ -42,20 +16,22 @@ def midi_type(midi):
     elif midi.isController():
         return "controller"
 
+
 async def produce(device, port):
     port_name = device.getPortName(port)
     device.openPort(port)
     device.ignoreTypes(True, False, True)
-    timeout_ms = 50
+    timeout_ms = 1/50
 
     while True:
-        midi = device.getMessage(timeout_ms)
+        midi = device.getMessage()
 
         if midi and clients:
             data = {
                 "port": port,
                 "port_name": port_name,
                 "note_number": midi.getNoteNumber(),
+                "note_name": midi.getMidiNoteName(midi.getNoteNumber()),
                 "velocity": midi.getVelocity(),
                 "state": midi_type(midi),
                 "controller_number": midi.getControllerNumber(),
@@ -66,8 +42,32 @@ async def produce(device, port):
 
             await asyncio.gather(*awaitables, return_exceptions=False)
 
-        await asyncio.sleep(0)
+        await asyncio.sleep(timeout_ms)
 
+
+async def handle_producers(loop):
+
+    producers = []
+
+    prev_num_ports = 0
+
+    while True:
+        num_ports = rtmidi.RtMidiIn().getPortCount()
+
+        if num_ports != prev_num_ports:
+            print("Creating new producers!")
+
+            for producer in producers:
+                producer.cancel()
+
+            producers = []
+
+            for port in range(num_ports):
+                device = rtmidi.RtMidiIn()
+                producers.append(loop.create_task(produce(device, port)))
+
+        prev_num_ports = num_ports
+        await asyncio.sleep(1)
 
 
 
@@ -94,7 +94,7 @@ port = 1
 
 loop = asyncio.get_event_loop()
 
-loop.create_task(produce(device, port))
+loop.create_task(handle_producers(loop))
 
 start_server = websockets.serve(handler, "localhost", 8765)
 
