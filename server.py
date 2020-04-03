@@ -31,7 +31,14 @@ async def produce(device, port):
     port_name = device.getPortName(port)
     device.openPort(port)
     device.ignoreTypes(True, False, True)
-    timeout_ms = 1/50
+
+    default_sleep_time = 0.008
+    max_sleep_time = 1
+    sleep_time = default_sleep_time
+
+    num_sleeps_without_activity = 0
+    total_sleep_in_bracket = 0
+    max_sleep_in_bracket = 2
 
     while True:
         midi = device.getMessage()
@@ -49,8 +56,19 @@ async def produce(device, port):
             })
 
             await send_to_all(data)
+            await asyncio.sleep(0)
 
-        await asyncio.sleep(timeout_ms)
+            num_sleeps_without_activity = 0
+            total_sleep_in_bracket = 0
+            sleep_time = default_sleep_time
+        else:
+            await asyncio.sleep(sleep_time)
+            num_sleeps_without_activity += 1
+            total_sleep_in_bracket += sleep_time
+            if total_sleep_in_bracket >= max_sleep_in_bracket:
+                sleep_time *= 2
+                sleep_time = min(sleep_time, max_sleep_time)
+                total_sleep_in_bracket = 0
 
 
 async def handle_producers(loop):
