@@ -95,6 +95,7 @@ async def handle_producers(loop):
                 producer.cancel()
 
             for device in devices:
+                device.close_port()
                 del device
 
             producers = []
@@ -123,6 +124,40 @@ def get_device_list(m=None):
     return m.get_ports()
 
 
+class DevicePlayer:
+    def __init__(self, device=None):
+        self.device = rtmidi.MidiOut() if device is None else device
+
+    def __del__(self):
+        del self.device
+
+    def play(self, data):
+        print(data)
+
+        port_index = data.get("port_index")
+        port_name = data.get("port_name")
+        status_name = data.get("status")
+        note_number = data.get("note_number")
+        velocity = data.get("velocity")
+
+        if port_index is None or port_name is None or status_name not in ["note_on", "note_off"] or note_number is None or velocity is None:
+            print("Invalid message")
+            return
+
+        if status_name == "note_on":
+            status = NOTE_ON
+        elif status_name == "note_off":
+            status = NOTE_OFF
+
+
+        midi_data = [status, note_number, velocity]
+
+        self.device.open_port(port_index)
+
+        with self.device:
+            self.device.send_message(midi_data)
+
+        self.device.close_port()
 
 
 async def handler(websocket, path):
@@ -138,8 +173,12 @@ async def handler(websocket, path):
 
     try:
         async for msg in websocket:
-            print("Message from ", websocket, ":", msg)
-            pass
+            try:
+                data = json.loads(msg)
+            except ValueError as e:
+                pass
+            else:
+                device_player.play(data)
     finally:
         # Unregister
         clients.remove(websocket)
@@ -147,6 +186,8 @@ async def handler(websocket, path):
 
 if __name__ == "__main__":
     clients = set()
+
+    device_player = DevicePlayer()
 
     loop = asyncio.get_event_loop()
 
