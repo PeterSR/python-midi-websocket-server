@@ -12,7 +12,7 @@ flat_note_names = [
     "Bb", "B",
 ]
 
-def midi_note_name(note, use_sharps=True, octave_number=True, octave_number_middle_c=4):
+def midi_note_name(note, use_sharps=True, octave_number=True, octave_number_middle_c=5):
     note_name = sharp_note_names[note % 12] if use_sharps else flat_note_names[note % 12]
 
     if octave_number:

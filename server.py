@@ -2,6 +2,7 @@
 
 # Built-in
 import os
+import gc
 import asyncio
 import json
 
@@ -42,7 +43,7 @@ async def produce(device, port):
     while True:
         midi = device.get_message()
 
-        if midi:
+        if midi and clients:
             msg, deltatime = midi
 
             data = {
@@ -127,6 +128,7 @@ def get_device_list(m=None):
 class DevicePlayer:
     def __init__(self, device=None):
         self.device = rtmidi.MidiOut() if device is None else device
+        self.port_index = None
 
     def __del__(self):
         del self.device
@@ -152,12 +154,16 @@ class DevicePlayer:
 
         midi_data = [status, note_number, velocity]
 
-        self.device.open_port(port_index)
+        print(midi_data)
 
-        with self.device:
-            self.device.send_message(midi_data)
+        # Open/change port
+        if self.port_index != port_index:
+            if self.port_index is not None:
+                self.device.close_port()
+            self.device.open_port(port_index)
+            self.port_index = port_index
 
-        self.device.close_port()
+        self.device.send_message(midi_data)
 
 
 async def handler(websocket, path):
@@ -199,3 +205,6 @@ if __name__ == "__main__":
 
     loop.run_until_complete(start_server)
     loop.run_forever()
+
+
+# TODO: Do not use port_index from MidiIn as port_index for MidiOut.
