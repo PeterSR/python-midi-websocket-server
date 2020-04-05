@@ -1,10 +1,17 @@
 #!/usr/bin/env python
 
+# Built-in
+import os
 import asyncio
 import json
 
+# Sockets
 import websockets
+
+# MIDI
 import rtmidi
+from rtmidi.midiconstants import NOTE_OFF, NOTE_ON
+from midi_helpers import midi_note_name, midi_status_name
 
 
 def create_message(msg_type, payload):
@@ -18,19 +25,11 @@ async def send_to_all(msg):
     awaitables = [ws.send(json.dumps(msg)) for ws in clients]
     return await asyncio.gather(*awaitables, return_exceptions=False)
 
-def midi_type(midi):
-    if midi.isNoteOn():
-        return "on"
-    elif midi.isNoteOff():
-        return "off"
-    elif midi.isController():
-        return "controller"
-
 
 async def produce(device, port):
-    port_name = device.getPortName(port)
-    device.openPort(port)
-    device.ignoreTypes(True, False, True)
+    port_name = device.get_port_name(port)
+    device.open_port(port)
+    device.ignore_types(sysex=True, timing=False, active_sense=True)
 
     default_sleep_time = 0.008
     max_sleep_time = 1
@@ -41,19 +40,25 @@ async def produce(device, port):
     max_sleep_in_bracket = 2
 
     while True:
-        midi = device.getMessage()
+        midi = device.get_message()
 
-        if midi and clients:
-            data = create_message("midi_data", {
+        if midi:
+            msg, deltatime = midi
+
+            data = {
                 "port_index": port,
                 "port_name": port_name,
-                "note_number": midi.getNoteNumber(),
-                "note_name": midi.getMidiNoteName(midi.getNoteNumber()),
-                "velocity": midi.getVelocity(),
-                "state": midi_type(midi),
-                "controller_number": midi.getControllerNumber(),
-                "controller_value": midi.getControllerValue(),
-            })
+            }
+
+            if len(msg) == 3:
+                data["status"] = midi_status_name(msg[0])
+                data["note_number"] = msg[1]
+                data["note_name"] = midi_note_name(msg[1])
+                data["velocity"] = msg[2]
+
+            data["msg"] = msg
+
+            data = create_message("midi_data", data)
 
             await send_to_all(data)
             await asyncio.sleep(0)
@@ -74,12 +79,14 @@ async def produce(device, port):
 async def handle_producers(loop):
 
     producers = []
+    devices = []
 
     prev_num_ports = 0
 
+    m = rtmidi.MidiIn()
+
     while True:
-        m = rtmidi.RtMidiIn()
-        num_ports = m.getPortCount()
+        num_ports = m.get_port_count()
 
         if num_ports != prev_num_ports:
             print("Creating new producers!")
@@ -87,33 +94,36 @@ async def handle_producers(loop):
             for producer in producers:
                 producer.cancel()
 
+            for device in devices:
+                del device
+
             producers = []
+            devices = []
             device_names = []
 
-            for port in range(num_ports):
-                device = rtmidi.RtMidiIn()
+            for port, port_name in enumerate(m.get_ports()):
+                device = rtmidi.MidiIn()
                 producers.append(loop.create_task(produce(device, port)))
-                device_names.append(m.getPortName(port))
+                devices.append(device)
+                device_names.append(port_name)
 
             await send_to_all(create_message("device_list", {
                 "devices": device_names,
             }))
 
         prev_num_ports = num_ports
+
         await asyncio.sleep(1)
 
 
 def get_device_list(m=None):
     if m is None:
-        m = rtmidi.RtMidiIn()
+        m = rtmidi.MidiIn()
 
-    return [
-        m.getPortName(i)
-        for i in range(m.getPortCount())
-    ]
+    return m.get_ports()
 
 
-clients = set()
+
 
 async def handler(websocket, path):
 
@@ -128,18 +138,23 @@ async def handler(websocket, path):
 
     try:
         async for msg in websocket:
+            print("Message from ", websocket, ":", msg)
             pass
     finally:
         # Unregister
         clients.remove(websocket)
 
 
+if __name__ == "__main__":
+    clients = set()
 
-loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
-loop.create_task(handle_producers(loop))
+    loop.create_task(handle_producers(loop))
 
-start_server = websockets.serve(handler, "localhost", 8765)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 8765))
+    start_server = websockets.serve(handler, host, port)
 
-loop.run_until_complete(start_server)
-loop.run_forever()
+    loop.run_until_complete(start_server)
+    loop.run_forever()

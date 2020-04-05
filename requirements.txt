@@ -1,2 +1,2 @@
-rtmidi~=2.3.4
+python-rtmidi~=1.4.0
 websockets~=8.1
