@@ -72,8 +72,6 @@ class Device:
 
                 data["msg"] = msg
 
-                print(data)
-
                 data = create_message("midi_data", data)
 
                 await server.send_to_all(data)
