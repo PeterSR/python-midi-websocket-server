@@ -5,7 +5,7 @@ with open('README.md') as f:
 
 setup(
     name='midi-websocket-server',
-    version='1.0',
+    version='1.0.0',
     description='Python Websocket server to facilitate two-way communication with all connected MIDI devices.',
     long_description=readme,
     url='https://github.com/PeterSR/python-midi-websocket-server',
