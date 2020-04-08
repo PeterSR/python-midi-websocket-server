@@ -13,7 +13,7 @@ import websockets
 # MIDI
 import rtmidi
 from rtmidi.midiconstants import NOTE_OFF, NOTE_ON
-from midi_helpers import midi_note_name, midi_status_name
+from .midi_helpers import midi_note_name, midi_status_name
 
 
 class Device:
