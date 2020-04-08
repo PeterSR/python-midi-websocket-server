@@ -5,6 +5,7 @@ import os
 import gc
 import json
 import functools
+import argparse
 
 # Sockets
 import asyncio
@@ -239,6 +240,21 @@ async def handler(websocket, path, server_state):
 
 
 def main():
+
+    parser = argparse.ArgumentParser(
+        prog="midi_websocket_server",
+        description='Start the MIDI Websocket server.',
+    )
+    parser.add_argument('-H', '--host', type=str, help='Interface to host server on (default: %(default)s)', default=os.getenv("HOST", "0.0.0.0"))
+    parser.add_argument('-p', '--port', type=int, help='Port to host server on (default: %(default)s)', default=int(os.getenv("PORT", 8765)))
+
+    args = parser.parse_args()
+
+    print("Starting server on {host}:{port}".format(
+        host=args.host,
+        port=args.port,
+    ))
+
     server_state = ServerState()
 
 
@@ -246,12 +262,10 @@ def main():
 
     loop.create_task(server_state.device_master.discovery(loop))
 
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", 8765))
     start_server = websockets.serve(
         functools.partial(handler, server_state=server_state),
-        host,
-        port,
+        args.host,
+        args.port,
     )
 
     loop.run_until_complete(start_server)
