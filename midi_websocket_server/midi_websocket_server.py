@@ -13,7 +13,7 @@ import websockets
 
 # MIDI
 import rtmidi
-from rtmidi.midiconstants import NOTE_OFF, NOTE_ON
+from rtmidi.midiconstants import NOTE_OFF, NOTE_ON, CONTROL_CHANGE
 from .midi_helpers import midi_note_name, midi_status_name
 
 
@@ -96,7 +96,7 @@ class Device:
         note_number = data.get("note_number")
         velocity = data.get("velocity")
 
-        if status_name not in ["note_on", "note_off"] or note_number is None or velocity is None:
+        if status_name not in ["note_on", "note_off", "control_change"] or note_number is None or velocity is None:
             print("Invalid message", data)
             return
 
@@ -104,6 +104,8 @@ class Device:
             status = NOTE_ON
         elif status_name == "note_off":
             status = NOTE_OFF
+        elif status_name == "control_change":
+            status = CONTROL_CHANGE
 
         midi_data = [status, note_number, velocity]
 
