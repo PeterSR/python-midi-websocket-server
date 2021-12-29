@@ -1,4 +1,4 @@
-from rtmidi.midiconstants import NOTE_OFF, NOTE_ON
+from rtmidi.midiconstants import NOTE_OFF, NOTE_ON, CONTROL_CHANGE
 
 sharp_note_names = [
     "C", "C#", "D", "D#", "E",
@@ -24,6 +24,7 @@ def midi_note_name(note, use_sharps=True, octave_number=True, octave_number_midd
 _midi_status = {
     NOTE_OFF: "note_off",
     NOTE_ON: "note_on",
+    CONTROL_CHANGE: "control_change",
 }
 
 def midi_status_name(status):
